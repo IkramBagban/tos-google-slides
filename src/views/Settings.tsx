@@ -115,8 +115,8 @@ export function Settings() {
             disabled={isLoading}
           />
         </SettingsInputFrame>
-        <SettingsHint>Allowed range: 5–1440 minutes. Invalid input falls back to 60.</SettingsHint>
-        <SettingsHint>Applied refresh interval: {appliedRefreshMinutes} minute(s)</SettingsHint>
+        <SettingsHint>How often the presentation reloads (between 5 and 1440 minutes).</SettingsHint>
+        <SettingsHint>Current value: {appliedRefreshMinutes} minute(s)</SettingsHint>
       </SettingsField>
 
       <SettingsHeading>Display Options</SettingsHeading>
@@ -134,8 +134,8 @@ export function Settings() {
             disabled={isLoading}
           />
         </SettingsInputFrame>
-        <SettingsHint>Used for Google's delayms parameter.</SettingsHint>
-        <SettingsHint>Applied duration: {appliedSlideDurationSeconds} second(s)</SettingsHint>
+        <SettingsHint>How long each slide stays on screen.</SettingsHint>
+        <SettingsHint>Current value: {appliedSlideDurationSeconds} second(s)</SettingsHint>
       </SettingsField>
 
       <SettingsHeading>Background</SettingsHeading>
