@@ -1,162 +1,205 @@
-/**
- * Settings view — configuration UI rendered inside the Studio admin portal.
- *
- * This view provides the standard appearance controls (theme, scale, padding,
- * animation, background toggle) that ship with every app.
- *
- * To add app-specific settings:
- *   1. Create store hooks in hooks/store.ts.
- *   2. Import and destructure them here alongside the existing hooks.
- *   3. Add their isLoading flags to the `isLoading` expression.
- *   4. Wrap your controls in a <SettingsSection title="Your Section">.
- *
- * Available SDK settings components:
- *   SettingsContainer, SettingsSection, SettingsDivider, SettingsHint,
- *   SettingsField, SettingsLabel,
- *   SettingsInputFrame, SettingsSelectFrame, SettingsSliderFrame,
- *   SettingsSwitchFrame, SettingsSwitchLabel,
- *   SettingsCheckboxFrame, SettingsCheckboxLabel
- *
- * SettingsSection is a collapsible accordion — use it to group related
- * controls under a heading. It manages its own open/closed state.
- * Always wrap new groups of settings in a SettingsSection.
- */
-
 import {
+  SettingsColorFrame,
   SettingsContainer,
+  SettingsError,
   SettingsField,
+  SettingsHeading,
   SettingsHint,
   SettingsInputFrame,
   SettingsLabel,
-  SettingsSection,
   SettingsSelectFrame,
   SettingsSliderFrame,
-  SettingsCheckboxFrame,
-  SettingsCheckboxLabel,
 } from '@telemetryos/sdk/react'
 import {
-  useThemeStoreState,
+  useBackgroundColorStoreState,
+  useBackgroundOpacityPercentStoreState,
+  useBackgroundTypeStoreState,
+  useGoogleSlidesUrlStoreState,
+  useRefreshIntervalMinutesStoreState,
+  useSlideDurationSecondsStoreState,
   useUiScaleStoreState,
-  usePagePaddingStoreState,
-  useAnimationStoreState,
-  useShowBackgroundStoreState,
-  useSubtitleStoreState,
 } from '../hooks/store'
-import { themes } from '../themes'
+import {
+  extractPublishedPresentationId,
+  isSharedOrEditGoogleSlidesUrl,
+  normalizeGoogleSlidesUrlInput,
+} from '../utils/googleSlides'
+
+function getUrlValidationError(rawUrl: string): string | null {
+  const trimmed = rawUrl.trim()
+  if (!trimmed) return null
+
+  if (extractPublishedPresentationId(trimmed)) return null
+
+  if (isSharedOrEditGoogleSlidesUrl(trimmed)) {
+    return 'This looks like a shared/edit link. Publish the deck to the web first, then paste the published URL.'
+  }
+
+  return 'Invalid Google Slides URL. Paste a published Google Slides URL.'
+}
+
+function normalizeRefreshMinutes(value: string): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 60
+  return Math.min(1440, Math.max(5, Math.round(parsed)))
+}
+
+function normalizeSlideDurationSeconds(value: string): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return 10
+  return Math.round(parsed)
+}
+
+function normalizeOpacityPercent(value: string): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 100
+  return Math.min(100, Math.max(0, Math.round(parsed)))
+}
+
+function sanitizeHexColor(value: string): string {
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim()) ? value.trim() : '#000000'
+}
 
 export function Settings() {
-  const [isLoadingTheme, themeName, setThemeName] = useThemeStoreState()
+  const [isLoadingUrl, googleSlidesUrl, setGoogleSlidesUrl] = useGoogleSlidesUrlStoreState(250)
+  const [isLoadingRefresh, refreshIntervalMinutes, setRefreshIntervalMinutes] = useRefreshIntervalMinutesStoreState(250)
+  const [isLoadingDuration, slideDurationSeconds, setSlideDurationSeconds] = useSlideDurationSecondsStoreState(250)
+  const [isLoadingBackgroundType, backgroundType, setBackgroundType] = useBackgroundTypeStoreState()
+  const [isLoadingBackgroundColor, backgroundColor, setBackgroundColor] = useBackgroundColorStoreState()
+  const [isLoadingBackgroundOpacity, backgroundOpacityPercent, setBackgroundOpacityPercent] = useBackgroundOpacityPercentStoreState(5)
   const [isLoadingScale, uiScale, setUiScale] = useUiScaleStoreState(5)
-  const [isLoadingPadding, pagePadding, setPagePadding] = usePagePaddingStoreState()
-  const [isLoadingAnim, animation, setAnimation] = useAnimationStoreState()
-  const [isLoadingBg, showBackground, setShowBackground] = useShowBackgroundStoreState()
-  const [isLoadingSubtitle, subtitle, setSubtitle] = useSubtitleStoreState(250)
 
-  const isLoading = isLoadingTheme || isLoadingScale || isLoadingPadding || isLoadingAnim || isLoadingBg
+  const isLoading =
+    isLoadingUrl ||
+    isLoadingRefresh ||
+    isLoadingDuration ||
+    isLoadingBackgroundType ||
+    isLoadingBackgroundColor ||
+    isLoadingBackgroundOpacity ||
+    isLoadingScale
+  const urlValidationError = getUrlValidationError(googleSlidesUrl)
+  const appliedRefreshMinutes = normalizeRefreshMinutes(refreshIntervalMinutes)
+  const appliedSlideDurationSeconds = normalizeSlideDurationSeconds(slideDurationSeconds)
+  const appliedBackgroundOpacityPercent = normalizeOpacityPercent(backgroundOpacityPercent)
 
   return (
     <SettingsContainer>
-      {/* ── App-specific sections go here ─────────────────────────────── */}
+      <SettingsHeading>Presentation Source</SettingsHeading>
 
-      <SettingsSection title="Content">
-        <SettingsField>
-          <SettingsLabel>Subtitle Text</SettingsLabel>
-          <SettingsInputFrame>
-            <input
-              type="text"
-              placeholder="Enter a subtitle..."
-              value={subtitle}
-              onChange={(e) => setSubtitle(e.target.value)}
-              disabled={isLoadingSubtitle}
-            />
-          </SettingsInputFrame>
-          <SettingsHint>Displayed below the welcome title on the render view</SettingsHint>
-        </SettingsField>
-      </SettingsSection>
+      <SettingsField>
+        <SettingsLabel>Google Slides URL</SettingsLabel>
+        <SettingsInputFrame>
+          <input
+            type="text"
+            placeholder="https://docs.google.com/presentation/d/e/.../pub"
+            value={googleSlidesUrl}
+            onChange={(e) => setGoogleSlidesUrl(e.target.value)}
+            onBlur={() => setGoogleSlidesUrl(normalizeGoogleSlidesUrlInput(googleSlidesUrl))}
+            disabled={isLoading}
+          />
+        </SettingsInputFrame>
+        <SettingsHint>Use File → Share → Publish to web in Google Slides, then paste the published URL.</SettingsHint>
+        {urlValidationError && <SettingsError>{urlValidationError}</SettingsError>}
+      </SettingsField>
 
-      {/* ── Appearance (common to all apps) ────────────────────────────── */}
+      <SettingsField>
+        <SettingsLabel>Refresh Interval (minutes)</SettingsLabel>
+        <SettingsInputFrame>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="60"
+            value={refreshIntervalMinutes}
+            onChange={(e) => setRefreshIntervalMinutes(e.target.value)}
+            onBlur={() => setRefreshIntervalMinutes(String(appliedRefreshMinutes))}
+            disabled={isLoading}
+          />
+        </SettingsInputFrame>
+        <SettingsHint>Allowed range: 5–1440 minutes. Invalid input falls back to 60.</SettingsHint>
+        <SettingsHint>Applied refresh interval: {appliedRefreshMinutes} minute(s)</SettingsHint>
+      </SettingsField>
 
-      <SettingsSection title="Appearance">
-        <SettingsField>
-          <SettingsLabel>Theme</SettingsLabel>
-          <SettingsSelectFrame>
-            <select
-              disabled={isLoading}
-              value={themeName}
-              onChange={(e) => setThemeName(e.target.value)}
-            >
-              {Object.entries(themes).map(([key, theme]) => (
-                <option key={key} value={key}>{theme.label}</option>
-              ))}
-            </select>
-          </SettingsSelectFrame>
-        </SettingsField>
+      <SettingsHeading>Display Options</SettingsHeading>
 
-        <SettingsField>
-          <SettingsLabel>UI Scale</SettingsLabel>
-          <SettingsSliderFrame>
-            <input
-              type="range"
-              min={1}
-              max={3}
-              step={0.01}
-              disabled={isLoading}
-              value={uiScale}
-              onChange={(e) => setUiScale(parseFloat(e.target.value))}
-            />
-            <span>{uiScale}x</span>
-          </SettingsSliderFrame>
-        </SettingsField>
+      <SettingsField>
+        <SettingsLabel>Slide Duration (seconds)</SettingsLabel>
+        <SettingsInputFrame>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="10"
+            value={slideDurationSeconds}
+            onChange={(e) => setSlideDurationSeconds(e.target.value)}
+            onBlur={() => setSlideDurationSeconds(String(appliedSlideDurationSeconds))}
+            disabled={isLoading}
+          />
+        </SettingsInputFrame>
+        <SettingsHint>Used for Google's delayms parameter.</SettingsHint>
+        <SettingsHint>Applied duration: {appliedSlideDurationSeconds} second(s)</SettingsHint>
+      </SettingsField>
 
-        <SettingsField>
-          <SettingsLabel>Padding</SettingsLabel>
-          <SettingsSliderFrame>
-            <input
-              type="range"
-              min={0}
-              max={3}
-              step={0.01}
-              disabled={isLoading}
-              value={pagePadding}
-              onChange={(e) => setPagePadding(parseFloat(e.target.value))}
-            />
-            <span>{pagePadding}x</span>
-          </SettingsSliderFrame>
-        </SettingsField>
+      <SettingsHeading>Background</SettingsHeading>
 
-        <SettingsField>
-          <SettingsLabel>Entrance Animation</SettingsLabel>
-          <SettingsSelectFrame>
-            <select
-              disabled={isLoading}
-              value={animation}
-              onChange={(e) => setAnimation(e.target.value)}
-            >
-              <option value="fade-in">Fade</option>
-              <option value="fade">Fade Up</option>
-              <option value="flip">Flip</option>
-              <option value="unfold">Unfold</option>
-              <option value="scale">Scale</option>
-              <option value="zoom">Zoom</option>
-              <option value="slide">Slide</option>
-              <option value="drop">Drop</option>
-              <option value="bounce">Bounce</option>
-              <option value="rise">Rise</option>
-              <option value="blur">Blur</option>
-              <option value="glitch">Glitch</option>
-              <option value="none">None</option>
-            </select>
-          </SettingsSelectFrame>
-        </SettingsField>
+      <SettingsField>
+        <SettingsLabel>Background Type</SettingsLabel>
+        <SettingsSelectFrame>
+          <select
+            value={backgroundType}
+            onChange={(e) => setBackgroundType(e.target.value as 'default' | 'solid')}
+            disabled={isLoading}
+          >
+            <option value="default">Default (black)</option>
+            <option value="solid">Solid color</option>
+          </select>
+        </SettingsSelectFrame>
+      </SettingsField>
 
-        <SettingsField>
-          <SettingsCheckboxFrame>
-            <input type="checkbox" disabled={isLoading} checked={showBackground} onChange={(e) => setShowBackground(e.target.checked)} />
-            <SettingsCheckboxLabel>Show Background</SettingsCheckboxLabel>
-          </SettingsCheckboxFrame>
-          <SettingsHint>Uncheck for a transparent background</SettingsHint>
-        </SettingsField>
-      </SettingsSection>
+      <SettingsField>
+        <SettingsLabel>Solid Background Color</SettingsLabel>
+        <SettingsColorFrame>
+          <input
+            type="color"
+            value={sanitizeHexColor(backgroundColor)}
+            onChange={(e) => setBackgroundColor(e.target.value)}
+            onBlur={() => setBackgroundColor(sanitizeHexColor(backgroundColor))}
+            disabled={isLoading || backgroundType !== 'solid'}
+          />
+        </SettingsColorFrame>
+      </SettingsField>
+
+      <SettingsField>
+        <SettingsLabel>Background Transparency</SettingsLabel>
+        <SettingsSliderFrame>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={appliedBackgroundOpacityPercent}
+            onChange={(e) => setBackgroundOpacityPercent(e.target.value)}
+            disabled={isLoading}
+          />
+        </SettingsSliderFrame>
+        <SettingsHint>{appliedBackgroundOpacityPercent}% opacity</SettingsHint>
+      </SettingsField>
+
+      <SettingsHeading>Display Scale</SettingsHeading>
+
+      <SettingsField>
+        <SettingsLabel>UI Scale</SettingsLabel>
+        <SettingsSliderFrame>
+          <input
+            type="range"
+            min={1}
+            max={3}
+            step={0.01}
+            value={uiScale}
+            onChange={(e) => setUiScale(Number(e.target.value))}
+            disabled={isLoading}
+          />
+        </SettingsSliderFrame>
+        <SettingsHint>{uiScale.toFixed(2)}x</SettingsHint>
+      </SettingsField>
     </SettingsContainer>
   )
 }

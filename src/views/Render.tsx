@@ -1,171 +1,174 @@
-/**
- * Render view — the display content shown on physical signage devices.
- *
- * This template provides the shared scaffolding that every app needs:
- *   - Theme system (8 themes with CSS custom properties)
- *   - Responsive density tiers (full / comfortable / compact / minimal)
- *   - Entrance animations (14 presets)
- *   - Page padding and UI scale controls
- *   - Background toggle (gradient or transparent for layering)
- *   - Portrait/landscape detection
- *
- * Layout building blocks (CSS classes with entrance animation support):
- *   .content-header   — top-level header bar (title + subtitle)
- *   .content-card     — primary hero card with gradient background
- *   .detail-grid      — grid container for detail cards
- *   .detail-card      — small info cards (icon + value + label)
- *   .content-section  — secondary section (footer bar, list, etc.)
- *
- * To build your app:
- *   1. Add store hooks in hooks/store.ts and import them here.
- *   2. Add their isLoading flags to `isStoreLoading`.
- *   3. Replace the welcome content below with your layout using the classes above.
- *   4. Use `density` and `isPortrait` to adapt your layout to available space.
- */
-
-import { useUiScaleToSetRem, useUiAspectRatio } from '@telemetryos/sdk/react'
+import { useEffect, useMemo, useState } from 'react'
+import { useUiAspectRatio, useUiScaleToSetRem } from '@telemetryos/sdk/react'
 import {
-  useThemeStoreState,
+  useBackgroundColorStoreState,
+  useBackgroundOpacityPercentStoreState,
+  useBackgroundTypeStoreState,
+  useGoogleSlidesUrlStoreState,
+  useRefreshIntervalMinutesStoreState,
+  useSlideDurationSecondsStoreState,
   useUiScaleStoreState,
-  usePagePaddingStoreState,
-  useAnimationStoreState,
-  useShowBackgroundStoreState,
-  useSubtitleStoreState,
 } from '../hooks/store'
-import { themes, type ThemeName, type Theme } from '../themes'
+import { extractPublishedPresentationId } from '../utils/googleSlides'
 import './Render.css'
 
-/** Maps a Theme's color tokens to CSS custom properties consumed by Render.css. */
-function applyThemeVars(theme: Theme) {
-  const c = theme.colors
-  return {
-    '--bg-start': c.bgStart,
-    '--bg-mid': c.bgMid,
-    '--bg-end': c.bgEnd,
-    '--card-start': c.cardStart,
-    '--card-mid1': c.cardMid1,
-    '--card-mid2': c.cardMid2,
-    '--card-end': c.cardEnd,
-    '--card-shadow': c.cardShadow,
-    '--primary': c.primary,
-    '--secondary': c.secondary,
-    '--muted': c.muted,
-    '--accent': c.accent,
-    '--card-bg': c.cardBg,
-    '--card-border': c.cardBorder,
-    '--status-good': c.statusGood,
-    '--font-family': theme.fontFamily,
-  } as React.CSSProperties
+function normalizeRefreshMinutes(value: string): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 60
+  return Math.min(1440, Math.max(5, Math.round(parsed)))
 }
 
-/**
- * Density tiers control spacing, font sizes, and which elements are visible.
- * Determined by UI scale combined with aspect ratio (portrait needs more room).
- */
-type Density = 'full' | 'comfortable' | 'compact' | 'minimal'
+function normalizeSlideDurationSeconds(value: string): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return 10
+  return Math.round(parsed)
+}
 
-function getDensity(uiScale: number, aspectRatio: number): Density {
-  const isPortrait = aspectRatio < 1
-  const pressure = uiScale * (isPortrait ? 1.2 : 1)
-  if (pressure < 1.4) return 'full'
-  if (pressure < 1.8) return 'comfortable'
-  if (pressure < 2.3) return 'compact'
-  return 'minimal'
+function normalizeOpacityPercent(value: string): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 100
+  return Math.min(100, Math.max(0, Math.round(parsed)))
+}
+
+function isValidHexColor(value: string): boolean {
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)
+}
+
+function hexToRgba(hexColor: string, opacityPercent: number): string {
+  if (!isValidHexColor(hexColor)) {
+    return `rgba(0, 0, 0, ${opacityPercent / 100})`
+  }
+
+  const normalized = hexColor.length === 4
+    ? `#${hexColor[1]}${hexColor[1]}${hexColor[2]}${hexColor[2]}${hexColor[3]}${hexColor[3]}`
+    : hexColor
+
+  const red = Number.parseInt(normalized.slice(1, 3), 16)
+  const green = Number.parseInt(normalized.slice(3, 5), 16)
+  const blue = Number.parseInt(normalized.slice(5, 7), 16)
+
+  return `rgba(${red}, ${green}, ${blue}, ${opacityPercent / 100})`
 }
 
 export function Render() {
-  // ── Store state ──────────────────────────────────────────────────────────
   const [isLoadingScale, uiScale] = useUiScaleStoreState()
-  const [isLoadingPadding, pagePadding] = usePagePaddingStoreState()
-  const [isLoadingTheme, themeName] = useThemeStoreState()
-  const [isLoadingAnim, animation] = useAnimationStoreState()
-  const [isLoadingBg, showBackground] = useShowBackgroundStoreState()
-  const [isLoadingSubtitle, subtitle] = useSubtitleStoreState()
+  const [isLoadingUrl, googleSlidesUrl] = useGoogleSlidesUrlStoreState()
+  const [isLoadingRefresh, refreshIntervalMinutes] = useRefreshIntervalMinutesStoreState()
+  const [isLoadingDuration, slideDurationSeconds] = useSlideDurationSecondsStoreState()
+  const [isLoadingBackgroundType, backgroundType] = useBackgroundTypeStoreState()
+  const [isLoadingBackgroundColor, backgroundColor] = useBackgroundColorStoreState()
+  const [isLoadingBackgroundOpacity, backgroundOpacityPercent] = useBackgroundOpacityPercentStoreState()
   const aspectRatio = useUiAspectRatio()
+  const [refreshNonce, setRefreshNonce] = useState(0)
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine)
 
-  // Drives rem scaling: html font-size = base * uiScale
   useUiScaleToSetRem(uiScale)
 
-  // ── Loading gate — render nothing until all store values are available ───
-  const isStoreLoading = isLoadingScale || isLoadingPadding || isLoadingTheme || isLoadingAnim || isLoadingBg || isLoadingSubtitle
-  if (isStoreLoading) return null
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
 
-  // ── Derived layout state ─────────────────────────────────────────────────
-  const resolvedName = (Object.prototype.hasOwnProperty.call(themes, themeName) ? themeName : 'telemetryos') as ThemeName
-  const theme = themes[resolvedName]
-  const isPortrait = aspectRatio < 1
-  const density = getDensity(uiScale, aspectRatio)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
 
-  // Themes that need special CSS overlays register their modifier class here.
-  const themeModifier: Record<string, string> = {
-    'telemetryos': 'render--telemetryos',
-    'neon-pulse': 'render--neon-pulse',
-    'solar-flare': 'render--solar-flare',
-    'emerald-matrix': 'render--emerald-matrix',
-    'arctic-aurora': 'render--arctic-aurora',
-    'the-matrix': 'render--the-matrix',
-    'plain-light': 'render--plain',
-    'plain-dark': 'render--plain',
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  const isStoreLoading =
+    isLoadingScale ||
+    isLoadingUrl ||
+    isLoadingRefresh ||
+    isLoadingDuration ||
+    isLoadingBackgroundType ||
+    isLoadingBackgroundColor ||
+    isLoadingBackgroundOpacity
+
+  const publishedPresentationId = useMemo(() => extractPublishedPresentationId(googleSlidesUrl), [googleSlidesUrl])
+
+  const refreshMs = normalizeRefreshMinutes(refreshIntervalMinutes) * 60_000
+  const delayMs = normalizeSlideDurationSeconds(slideDurationSeconds) * 1000
+  const opacityPercent = normalizeOpacityPercent(backgroundOpacityPercent)
+
+  const resolvedBackgroundColor = backgroundType === 'solid' ? backgroundColor : '#000000'
+  const letterboxBackgroundColor = hexToRgba(resolvedBackgroundColor, opacityPercent)
+
+  const embedUrl = useMemo(() => {
+    if (!publishedPresentationId) {
+      return null
+    }
+
+    const params = new URLSearchParams({
+      start: 'true',
+      loop: 'true',
+      delayms: String(delayMs),
+      rm: 'minimal',
+    })
+
+    return `https://docs.google.com/presentation/d/e/${publishedPresentationId}/embed?${params.toString()}`
+  }, [delayMs, publishedPresentationId])
+
+  useEffect(() => {
+    if (!embedUrl) {
+      return
+    }
+
+    setRefreshNonce((current) => current + 1)
+  }, [embedUrl])
+
+  useEffect(() => {
+    if (isStoreLoading || !embedUrl || !isOnline) {
+      return
+    }
+
+    const worker = new Worker(new URL('../workers/iframeRefreshWorker.ts', import.meta.url), { type: 'module' })
+
+    worker.addEventListener('message', (event: MessageEvent<{ type: 'tick' }>) => {
+      if (event.data?.type === 'tick') {
+        setRefreshNonce((current) => current + 1)
+      }
+    })
+
+    worker.addEventListener('error', () => {
+      console.error('Google Slides refresh worker error. Keeping current iframe without scheduled refresh.')
+    })
+
+    worker.postMessage({ type: 'start', intervalMs: refreshMs })
+
+    return () => {
+      worker.postMessage({ type: 'stop' })
+      worker.terminate()
+    }
+  }, [embedUrl, isOnline, isStoreLoading, refreshMs])
+
+  const shouldRender = !isStoreLoading && isOnline && !!embedUrl
+  if (!shouldRender || !embedUrl) {
+    return null
   }
 
-  const animClass = `anim--${animation}`
-  const layoutClasses = [
-    'render',
-    themeModifier[resolvedName] ?? '',
-    isPortrait ? 'render--portrait' : '',
-    `render--${density}`,
-    animClass,
-    showBackground ? '' : 'render--no-bg',
-  ].filter(Boolean).join(' ')
+  const isWideViewport = aspectRatio >= 16 / 9
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  const frameStyle: React.CSSProperties = isWideViewport
+    ? { height: '100%', width: 'auto', maxWidth: '100%', aspectRatio: '16 / 9' }
+    : { width: '100%', height: 'auto', maxHeight: '100%', aspectRatio: '16 / 9' }
+
   return (
-    <div key={animation} className={layoutClasses} style={{ ...applyThemeVars(theme), '--page-padding': pagePadding } as React.CSSProperties}>
-      {/* Theme-specific background effects */}
-      {showBackground && resolvedName === 'telemetryos' && <div className="tos-sweep" />}
-      {showBackground && resolvedName === 'neon-pulse' && (
-        <div className="neon-pulse-bg">
-          <div className="neon-pulse-bg__orb" />
-          <div className="neon-pulse-bg__orb" />
-          <div className="neon-pulse-bg__orb" />
+    <div className="render" style={{ backgroundColor: letterboxBackgroundColor }}>
+      <div className="render-safe-zone">
+        <div className="slides-letterbox">
+          <iframe
+            key={`${embedUrl}-${refreshNonce}`}
+            className="slides-frame"
+            style={frameStyle}
+            src={embedUrl}
+            title="Google Slides Presentation"
+            allow="autoplay; fullscreen"
+            loading="eager"
+            referrerPolicy="no-referrer-when-downgrade"
+          />
         </div>
-      )}
-      {showBackground && resolvedName === 'solar-flare' && <div className="solar-flare-bg" />}
-      {showBackground && resolvedName === 'arctic-aurora' && <div className="arctic-aurora-bg" />}
-      {showBackground && resolvedName === 'the-matrix' && <div className="matrix-scanlines" />}
-
-      {/* ── Welcome content (replace with your app) ─────────────────────── */}
-
-      <img src={resolvedName === 'plain-light' ? '/assets/telemetryos-wordmark-dark.svg' : '/assets/telemetryos-wordmark.svg'} alt="TelemetryOS" className="render__logo" />
-
-      <div className="render__hero">
-        {density !== 'minimal' && (
-          <div className="render__hero-title">Welcome to TelemetryOS SDK</div>
-        )}
-        <div className="render__hero-subtitle">{subtitle}</div>
-      </div>
-
-      <div className="render__docs-information">
-        {density === 'full' && (
-          <>
-            <div className="render__docs-information-title">
-              To get started, edit the Render.tsx and Settings.tsx files
-            </div>
-            <div className="render__docs-information-text">
-              Visit our documentation on building applications to learn more
-            </div>
-          </>
-        )}
-        {(density === 'full' || density === 'comfortable') && (
-          <a
-            className="render__docs-information-button"
-            href="https://docs.telemetryos.com/docs/sdk-getting-started"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Documentation
-          </a>
-        )}
       </div>
     </div>
   )

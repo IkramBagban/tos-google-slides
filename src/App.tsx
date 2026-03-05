@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouterProvider, useLoaderData } from 'react-router'
+import { createBrowserRouter, RouterProvider } from 'react-router'
 import { Render } from './views/Render'
 import { Settings } from './views/Settings'
 

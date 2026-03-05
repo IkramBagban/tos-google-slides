@@ -5,6 +5,7 @@
     "strict": true,
     "lib": ["DOM", "ESNext"],
     "target": "ES2019",
+    "module": "ESNext",
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
