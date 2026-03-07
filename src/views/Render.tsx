@@ -4,6 +4,7 @@ import {
   useBackgroundColorStoreState,
   useBackgroundOpacityPercentStoreState,
   useBackgroundTypeStoreState,
+  useEmbedZoomPercentStoreState,
   useGoogleSlidesUrlStoreState,
   useRefreshIntervalMinutesStoreState,
   useSlideDurationSecondsStoreState,
@@ -28,6 +29,11 @@ function normalizeOpacityPercent(value: string): number {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return 100
   return Math.min(100, Math.max(0, Math.round(parsed)))
+}
+
+function normalizeEmbedZoomPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, value))
 }
 
 function isValidHexColor(value: string): boolean {
@@ -55,6 +61,7 @@ export function Render() {
   const [isLoadingUrl, googleSlidesUrl] = useGoogleSlidesUrlStoreState()
   const [isLoadingRefresh, refreshIntervalMinutes] = useRefreshIntervalMinutesStoreState()
   const [isLoadingDuration, slideDurationSeconds] = useSlideDurationSecondsStoreState()
+  const [isLoadingEmbedZoom, embedZoomPercent] = useEmbedZoomPercentStoreState()
   const [isLoadingBackgroundType, backgroundType] = useBackgroundTypeStoreState()
   const [isLoadingBackgroundColor, backgroundColor] = useBackgroundColorStoreState()
   const [isLoadingBackgroundOpacity, backgroundOpacityPercent] = useBackgroundOpacityPercentStoreState()
@@ -84,6 +91,7 @@ export function Render() {
     isLoadingUrl ||
     isLoadingRefresh ||
     isLoadingDuration ||
+    isLoadingEmbedZoom ||
     isLoadingBackgroundType ||
     isLoadingBackgroundColor ||
     isLoadingBackgroundOpacity
@@ -93,6 +101,7 @@ export function Render() {
   const refreshMs = normalizeRefreshMinutes(refreshIntervalMinutes) * 60_000
   const delayMs = normalizeSlideDurationSeconds(slideDurationSeconds) * 1000
   const opacityPercent = normalizeOpacityPercent(backgroundOpacityPercent)
+  const embedZoomScale = 1 + normalizeEmbedZoomPercent(embedZoomPercent) / 100
   const slideAspectRatioValue = uiAspectRatio > 0 ? uiAspectRatio : 16 / 9
 
   const letterboxBackgroundColor = backgroundType === 'transparent'
@@ -214,6 +223,7 @@ export function Render() {
                 allow="autoplay; fullscreen"
                 loading="eager"
                 referrerPolicy="no-referrer-when-downgrade"
+                style={{ transform: `scale(${embedZoomScale})` }}
               />
             </div>
           )}

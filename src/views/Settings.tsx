@@ -14,6 +14,7 @@ import {
   useBackgroundColorStoreState,
   useBackgroundOpacityPercentStoreState,
   useBackgroundTypeStoreState,
+  useEmbedZoomPercentStoreState,
   useGoogleSlidesUrlStoreState,
   useRefreshIntervalMinutesStoreState,
   useSlideDurationSecondsStoreState,
@@ -56,6 +57,11 @@ function normalizeOpacityPercent(value: string): number {
   return Math.min(100, Math.max(0, Math.round(parsed)))
 }
 
+function normalizeEmbedZoomPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, Math.round(value * 10) / 10))
+}
+
 function sanitizeHexColor(value: string): string {
   return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim()) ? value.trim() : '#000000'
 }
@@ -64,6 +70,7 @@ export function Settings() {
   const [isLoadingUrl, googleSlidesUrl, setGoogleSlidesUrl] = useGoogleSlidesUrlStoreState(250)
   const [isLoadingRefresh, refreshIntervalMinutes, setRefreshIntervalMinutes] = useRefreshIntervalMinutesStoreState(250)
   const [isLoadingDuration, slideDurationSeconds, setSlideDurationSeconds] = useSlideDurationSecondsStoreState(250)
+  const [isLoadingEmbedZoom, embedZoomPercent, setEmbedZoomPercent] = useEmbedZoomPercentStoreState(5)
   const [isLoadingBackgroundType, backgroundType, setBackgroundType] = useBackgroundTypeStoreState()
   const [isLoadingBackgroundColor, backgroundColor, setBackgroundColor] = useBackgroundColorStoreState()
   const [isLoadingBackgroundOpacity, backgroundOpacityPercent, setBackgroundOpacityPercent] = useBackgroundOpacityPercentStoreState(5)
@@ -73,6 +80,7 @@ export function Settings() {
     isLoadingUrl ||
     isLoadingRefresh ||
     isLoadingDuration ||
+    isLoadingEmbedZoom ||
     isLoadingBackgroundType ||
     isLoadingBackgroundColor ||
     isLoadingBackgroundOpacity ||
@@ -80,6 +88,7 @@ export function Settings() {
   const urlValidationError = getUrlValidationError(googleSlidesUrl)
   const appliedRefreshMinutes = normalizeRefreshMinutes(refreshIntervalMinutes)
   const appliedSlideDurationSeconds = normalizeSlideDurationSeconds(slideDurationSeconds)
+  const appliedEmbedZoomPercent = normalizeEmbedZoomPercent(embedZoomPercent)
   const appliedBackgroundOpacityPercent = normalizeOpacityPercent(backgroundOpacityPercent)
 
   return (
@@ -136,6 +145,23 @@ export function Settings() {
         </SettingsInputFrame>
         <SettingsHint>How long each slide stays on screen.</SettingsHint>
         <SettingsHint>Current value: {appliedSlideDurationSeconds} second(s)</SettingsHint>
+      </SettingsField>
+
+      <SettingsField>
+        <SettingsLabel>Black Bar Crop (Zoom)</SettingsLabel>
+        <SettingsSliderFrame>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={0.1}
+            value={appliedEmbedZoomPercent}
+            onChange={(e) => setEmbedZoomPercent(Number(e.target.value))}
+            disabled={isLoading}
+          />
+        </SettingsSliderFrame>
+        <SettingsHint>{appliedEmbedZoomPercent.toFixed(1)}% zoom</SettingsHint>
+        <SettingsHint>Increase only if Google embed shows black bars. This crops edges to fill.</SettingsHint>
       </SettingsField>
 
       <SettingsHint>Presentation sizing is now automatic based on the current screen aspect ratio.</SettingsHint>
