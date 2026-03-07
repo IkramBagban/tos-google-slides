@@ -138,6 +138,8 @@ export function Settings() {
         <SettingsHint>Current value: {appliedSlideDurationSeconds} second(s)</SettingsHint>
       </SettingsField>
 
+      <SettingsHint>Presentation sizing is now automatic based on the current screen aspect ratio.</SettingsHint>
+
       <SettingsHeading>Background</SettingsHeading>
 
       <SettingsField>
@@ -145,11 +147,12 @@ export function Settings() {
         <SettingsSelectFrame>
           <select
             value={backgroundType}
-            onChange={(e) => setBackgroundType(e.target.value as 'default' | 'solid')}
+            onChange={(e) => setBackgroundType(e.target.value as 'default' | 'solid' | 'transparent')}
             disabled={isLoading}
           >
             <option value="default">Default (black)</option>
             <option value="solid">Solid color</option>
+            <option value="transparent">None (transparent)</option>
           </select>
         </SettingsSelectFrame>
       </SettingsField>
@@ -177,10 +180,13 @@ export function Settings() {
             step={1}
             value={appliedBackgroundOpacityPercent}
             onChange={(e) => setBackgroundOpacityPercent(e.target.value)}
-            disabled={isLoading}
+            disabled={isLoading || backgroundType === 'transparent'}
           />
         </SettingsSliderFrame>
         <SettingsHint>{appliedBackgroundOpacityPercent}% opacity</SettingsHint>
+        {backgroundType === 'transparent' && (
+          <SettingsHint>Opacity is ignored when background is transparent.</SettingsHint>
+        )}
       </SettingsField>
 
       <SettingsHeading>Display Scale</SettingsHeading>
@@ -190,7 +196,7 @@ export function Settings() {
         <SettingsSliderFrame>
           <input
             type="range"
-            min={1}
+            min={0}
             max={3}
             step={0.01}
             value={uiScale}

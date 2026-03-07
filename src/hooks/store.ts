@@ -7,7 +7,7 @@ export const useRefreshIntervalMinutesStoreState = createUseInstanceStoreState<s
 
 export const useSlideDurationSecondsStoreState = createUseInstanceStoreState<string>('slide-duration-seconds', '10')
 
-export const useBackgroundTypeStoreState = createUseInstanceStoreState<'default' | 'solid'>('background-type', 'default')
+export const useBackgroundTypeStoreState = createUseInstanceStoreState<'default' | 'solid' | 'transparent'>('background-type', 'default')
 
 export const useBackgroundColorStoreState = createUseInstanceStoreState<string>('background-color', '#000000')
 

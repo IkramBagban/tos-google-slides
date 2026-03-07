@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useUiAspectRatio, useUiScaleToSetRem } from '@telemetryos/sdk/react'
 import {
   useBackgroundColorStoreState,
@@ -58,9 +58,11 @@ export function Render() {
   const [isLoadingBackgroundType, backgroundType] = useBackgroundTypeStoreState()
   const [isLoadingBackgroundColor, backgroundColor] = useBackgroundColorStoreState()
   const [isLoadingBackgroundOpacity, backgroundOpacityPercent] = useBackgroundOpacityPercentStoreState()
-  const aspectRatio = useUiAspectRatio()
+  const uiAspectRatio = useUiAspectRatio()
   const [refreshNonce, setRefreshNonce] = useState(0)
   const [isOnline, setIsOnline] = useState(() => navigator.onLine)
+  const letterboxRef = useRef<HTMLDivElement | null>(null)
+  const [letterboxSize, setLetterboxSize] = useState({ width: 0, height: 0 })
 
   useUiScaleToSetRem(uiScale)
 
@@ -91,9 +93,11 @@ export function Render() {
   const refreshMs = normalizeRefreshMinutes(refreshIntervalMinutes) * 60_000
   const delayMs = normalizeSlideDurationSeconds(slideDurationSeconds) * 1000
   const opacityPercent = normalizeOpacityPercent(backgroundOpacityPercent)
+  const slideAspectRatioValue = uiAspectRatio > 0 ? uiAspectRatio : 16 / 9
 
-  const resolvedBackgroundColor = backgroundType === 'solid' ? backgroundColor : '#000000'
-  const letterboxBackgroundColor = hexToRgba(resolvedBackgroundColor, opacityPercent)
+  const letterboxBackgroundColor = backgroundType === 'transparent'
+    ? 'transparent'
+    : hexToRgba(backgroundType === 'solid' ? backgroundColor : '#000000', opacityPercent)
 
   const embedUrl = useMemo(() => {
     if (!publishedPresentationId) {
@@ -143,31 +147,76 @@ export function Render() {
     }
   }, [embedUrl, isOnline, isStoreLoading, refreshMs])
 
-  const shouldRender = !isStoreLoading && isOnline && !!embedUrl
-  if (!shouldRender || !embedUrl) {
-    return null
+  useEffect(() => {
+    if (!letterboxRef.current) {
+      return
+    }
+
+    const element = letterboxRef.current
+    const updateSize = () => {
+      const rect = element.getBoundingClientRect()
+      const nextWidth = rect.width
+      const nextHeight = rect.height
+      setLetterboxSize((current) => {
+        if (current.width === nextWidth && current.height === nextHeight) {
+          return current
+        }
+
+        return { width: nextWidth, height: nextHeight }
+      })
+    }
+
+    updateSize()
+
+    const observer = new ResizeObserver(() => updateSize())
+    observer.observe(element)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+
+  const { width: letterboxWidth, height: letterboxHeight } = letterboxSize
+  let stageWidth = 0
+  let stageHeight = 0
+  if (letterboxWidth > 0 && letterboxHeight > 0) {
+    const viewportAspectRatio = letterboxWidth / letterboxHeight
+    if (slideAspectRatioValue > viewportAspectRatio) {
+      // Slide is wider than container — constrain by width, derive height
+      stageWidth = Math.floor(letterboxWidth)
+      stageHeight = Math.round(stageWidth / slideAspectRatioValue)
+    } else {
+      // Slide is taller than (or same as) container — constrain by height, derive width
+      stageHeight = Math.floor(letterboxHeight)
+      stageWidth = Math.round(stageHeight * slideAspectRatioValue)
+    }
   }
 
-  const isWideViewport = aspectRatio >= 16 / 9
-
-  const frameStyle: React.CSSProperties = isWideViewport
-    ? { height: '100%', width: 'auto', maxWidth: '100%', aspectRatio: '16 / 9' }
-    : { width: '100%', height: 'auto', maxHeight: '100%', aspectRatio: '16 / 9' }
+  const isReady = !isStoreLoading && isOnline && !!embedUrl && stageWidth > 0 && stageHeight > 0
 
   return (
     <div className="render" style={{ backgroundColor: letterboxBackgroundColor }}>
       <div className="render-safe-zone">
-        <div className="slides-letterbox">
-          <iframe
-            key={`${embedUrl}-${refreshNonce}`}
-            className="slides-frame"
-            style={frameStyle}
-            src={embedUrl}
-            title="Google Slides Presentation"
-            allow="autoplay; fullscreen"
-            loading="eager"
-            referrerPolicy="no-referrer-when-downgrade"
-          />
+        <div ref={letterboxRef} className="slides-letterbox">
+          {isReady && embedUrl && (
+            <div
+              className="slides-viewport"
+              style={{
+                width: `${stageWidth}px`,
+                height: `${stageHeight}px`,
+              }}
+            >
+              <iframe
+                key={`${embedUrl}-${refreshNonce}`}
+                className="slides-frame"
+                src={embedUrl}
+                title="Google Slides Presentation"
+                allow="autoplay; fullscreen"
+                loading="eager"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
