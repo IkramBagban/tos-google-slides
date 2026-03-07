@@ -116,7 +116,6 @@ export function Settings() {
           />
         </SettingsInputFrame>
         <SettingsHint>How often the presentation reloads (between 5 and 1440 minutes).</SettingsHint>
-        <SettingsHint>Current value: {appliedRefreshMinutes} minute(s)</SettingsHint>
       </SettingsField>
 
       <SettingsHeading>Display Options</SettingsHeading>
@@ -135,10 +134,7 @@ export function Settings() {
           />
         </SettingsInputFrame>
         <SettingsHint>How long each slide stays on screen.</SettingsHint>
-        <SettingsHint>Current value: {appliedSlideDurationSeconds} second(s)</SettingsHint>
       </SettingsField>
-
-      <SettingsHint>Presentation sizing is now automatic based on the current screen aspect ratio.</SettingsHint>
 
       <SettingsHeading>Background</SettingsHeading>
 
