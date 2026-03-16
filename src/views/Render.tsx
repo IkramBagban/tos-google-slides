@@ -1,9 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useUiAspectRatio, useUiScaleToSetRem } from '@telemetryos/sdk/react'
+import { useEffect, useMemo, useState } from 'react'
+import { useUiAspectRatio, useUiResponsiveFactors, useUiScaleToSetRem } from '@telemetryos/sdk/react'
 import {
-  useBackgroundColorStoreState,
-  useBackgroundOpacityPercentStoreState,
-  useBackgroundTypeStoreState,
   useGoogleSlidesUrlStoreState,
   useRefreshIntervalMinutesStoreState,
   useSlideDurationSecondsStoreState,
@@ -23,46 +20,18 @@ function normalizeSlideDurationSeconds(value: string): number {
   if (!Number.isFinite(parsed) || parsed <= 0) return 10
   return Math.round(parsed)
 }
-
-function normalizeOpacityPercent(value: string): number {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return 100
-  return Math.min(100, Math.max(0, Math.round(parsed)))
-}
-
-function isValidHexColor(value: string): boolean {
-  return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)
-}
-
-function hexToRgba(hexColor: string, opacityPercent: number): string {
-  if (!isValidHexColor(hexColor)) {
-    return `rgba(0, 0, 0, ${opacityPercent / 100})`
-  }
-
-  const normalized = hexColor.length === 4
-    ? `#${hexColor[1]}${hexColor[1]}${hexColor[2]}${hexColor[2]}${hexColor[3]}${hexColor[3]}`
-    : hexColor
-
-  const red = Number.parseInt(normalized.slice(1, 3), 16)
-  const green = Number.parseInt(normalized.slice(3, 5), 16)
-  const blue = Number.parseInt(normalized.slice(5, 7), 16)
-
-  return `rgba(${red}, ${green}, ${blue}, ${opacityPercent / 100})`
-}
+const GOOGLE_SLIDES_STAGE_WIDTH = 16
+const GOOGLE_SLIDES_STAGE_HEIGHT = 9
 
 export function Render() {
   const [isLoadingScale, uiScale] = useUiScaleStoreState()
   const [isLoadingUrl, googleSlidesUrl] = useGoogleSlidesUrlStoreState()
   const [isLoadingRefresh, refreshIntervalMinutes] = useRefreshIntervalMinutesStoreState()
   const [isLoadingDuration, slideDurationSeconds] = useSlideDurationSecondsStoreState()
-  const [isLoadingBackgroundType, backgroundType] = useBackgroundTypeStoreState()
-  const [isLoadingBackgroundColor, backgroundColor] = useBackgroundColorStoreState()
-  const [isLoadingBackgroundOpacity, backgroundOpacityPercent] = useBackgroundOpacityPercentStoreState()
   const uiAspectRatio = useUiAspectRatio()
-  const [refreshNonce, setRefreshNonce] = useState(0)
+  const { uiWidthFactor, uiHeightFactor } = useUiResponsiveFactors(uiScale, uiAspectRatio)
+  const [refreshToken, setRefreshToken] = useState(0)
   const [isOnline, setIsOnline] = useState(() => navigator.onLine)
-  const letterboxRef = useRef<HTMLDivElement | null>(null)
-  const [letterboxSize, setLetterboxSize] = useState({ width: 0, height: 0 })
 
   useUiScaleToSetRem(uiScale)
 
@@ -83,22 +52,12 @@ export function Render() {
     isLoadingScale ||
     isLoadingUrl ||
     isLoadingRefresh ||
-    isLoadingDuration ||
-    isLoadingBackgroundType ||
-    isLoadingBackgroundColor ||
-    isLoadingBackgroundOpacity
+    isLoadingDuration
 
   const publishedPresentationId = useMemo(() => extractPublishedPresentationId(googleSlidesUrl), [googleSlidesUrl])
 
   const refreshMs = normalizeRefreshMinutes(refreshIntervalMinutes) * 60_000
   const delayMs = normalizeSlideDurationSeconds(slideDurationSeconds) * 1000
-  const opacityPercent = normalizeOpacityPercent(backgroundOpacityPercent)
-  const slideAspectRatioValue = uiAspectRatio > 0 ? uiAspectRatio : 16 / 9
-
-  const letterboxBackgroundColor = backgroundType === 'transparent'
-    ? 'transparent'
-    : hexToRgba(backgroundType === 'solid' ? backgroundColor : '#000000', opacityPercent)
-
   const embedUrl = useMemo(() => {
     if (!publishedPresentationId) {
       return null
@@ -115,108 +74,56 @@ export function Render() {
   }, [delayMs, publishedPresentationId])
 
   useEffect(() => {
-    if (!embedUrl) {
-      return
-    }
-
-    setRefreshNonce((current) => current + 1)
-  }, [embedUrl])
-
-  useEffect(() => {
     if (isStoreLoading || !embedUrl || !isOnline) {
       return
     }
 
-    const worker = new Worker(new URL('../workers/iframeRefreshWorker.ts', import.meta.url), { type: 'module' })
-
-    worker.addEventListener('message', (event: MessageEvent<{ type: 'tick' }>) => {
-      if (event.data?.type === 'tick') {
-        setRefreshNonce((current) => current + 1)
-      }
-    })
-
-    worker.addEventListener('error', () => {
-      console.error('Google Slides refresh worker error. Keeping current iframe without scheduled refresh.')
-    })
-
-    worker.postMessage({ type: 'start', intervalMs: refreshMs })
-
+    const timer = window.setTimeout(() => {
+      setRefreshToken((current) => current + 1)
+    }, refreshMs)
     return () => {
-      worker.postMessage({ type: 'stop' })
-      worker.terminate()
+      window.clearTimeout(timer)
     }
-  }, [embedUrl, isOnline, isStoreLoading, refreshMs])
+  }, [embedUrl, isOnline, isStoreLoading, refreshMs, refreshToken])
 
-  useEffect(() => {
-    if (!letterboxRef.current) {
-      return
-    }
-
-    const element = letterboxRef.current
-    const updateSize = () => {
-      const rect = element.getBoundingClientRect()
-      const nextWidth = rect.width
-      const nextHeight = rect.height
-      setLetterboxSize((current) => {
-        if (current.width === nextWidth && current.height === nextHeight) {
-          return current
-        }
-
-        return { width: nextWidth, height: nextHeight }
-      })
+  const iframeSrc = useMemo(() => {
+    if (!embedUrl) {
+      return null
     }
 
-    updateSize()
+    const url = new URL(embedUrl)
+    url.searchParams.set('refresh', String(refreshToken))
+    return url.toString()
+  }, [embedUrl, refreshToken])
 
-    const observer = new ResizeObserver(() => updateSize())
-    observer.observe(element)
+  const stageStyle = {
+    '--slides-native-width': String(GOOGLE_SLIDES_STAGE_WIDTH),
+    '--slides-native-height': String(GOOGLE_SLIDES_STAGE_HEIGHT),
+    '--ui-width-factor': String(uiWidthFactor),
+    '--ui-height-factor': String(uiHeightFactor),
+  } as React.CSSProperties
 
-    return () => {
-      observer.disconnect()
-    }
-  }, [])
+  const isReady = !isStoreLoading && isOnline && !!iframeSrc
+  const renderClassName = uiAspectRatio < 1 ? 'render render--portrait' : 'render'
 
-  const { width: letterboxWidth, height: letterboxHeight } = letterboxSize
-  let stageWidth = 0
-  let stageHeight = 0
-  if (letterboxWidth > 0 && letterboxHeight > 0) {
-    const viewportAspectRatio = letterboxWidth / letterboxHeight
-    if (slideAspectRatioValue > viewportAspectRatio) {
-      // Slide is wider than container — constrain by width, derive height
-      stageWidth = Math.floor(letterboxWidth)
-      stageHeight = Math.round(stageWidth / slideAspectRatioValue)
-    } else {
-      // Slide is taller than (or same as) container — constrain by height, derive width
-      stageHeight = Math.floor(letterboxHeight)
-      stageWidth = Math.round(stageHeight * slideAspectRatioValue)
-    }
+  if (!isReady) {
+    return <div className={renderClassName} />
   }
 
-  const isReady = !isStoreLoading && isOnline && !!embedUrl && stageWidth > 0 && stageHeight > 0
-
   return (
-    <div className="render" style={{ backgroundColor: letterboxBackgroundColor }}>
+    <div className={renderClassName}>
       <div className="render-safe-zone">
-        <div ref={letterboxRef} className="slides-letterbox">
-          {isReady && embedUrl && (
-            <div
-              className="slides-viewport"
-              style={{
-                width: `${stageWidth}px`,
-                height: `${stageHeight}px`,
-              }}
-            >
-              <iframe
-                key={`${embedUrl}-${refreshNonce}`}
-                className="slides-frame"
-                src={embedUrl}
-                title="Google Slides Presentation"
-                allow="autoplay; fullscreen"
-                loading="eager"
-                referrerPolicy="no-referrer-when-downgrade"
-              />
-            </div>
-          )}
+        <div className="slides-letterbox" style={stageStyle}>
+          <div className="slides-viewport">
+            <iframe
+              className="slides-frame"
+              src={iframeSrc ?? undefined}
+              title="Google Slides Presentation"
+              allow="autoplay; fullscreen"
+              loading="eager"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          </div>
         </div>
       </div>
     </div>

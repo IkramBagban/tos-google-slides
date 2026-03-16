@@ -1,5 +1,4 @@
 import {
-  SettingsColorFrame,
   SettingsContainer,
   SettingsError,
   SettingsField,
@@ -7,13 +6,9 @@ import {
   SettingsHint,
   SettingsInputFrame,
   SettingsLabel,
-  SettingsSelectFrame,
   SettingsSliderFrame,
 } from '@telemetryos/sdk/react'
 import {
-  useBackgroundColorStoreState,
-  useBackgroundOpacityPercentStoreState,
-  useBackgroundTypeStoreState,
   useGoogleSlidesUrlStoreState,
   useRefreshIntervalMinutesStoreState,
   useSlideDurationSecondsStoreState,
@@ -50,37 +45,20 @@ function normalizeSlideDurationSeconds(value: string): number {
   return Math.round(parsed)
 }
 
-function normalizeOpacityPercent(value: string): number {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return 100
-  return Math.min(100, Math.max(0, Math.round(parsed)))
-}
-
-function sanitizeHexColor(value: string): string {
-  return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim()) ? value.trim() : '#000000'
-}
-
 export function Settings() {
   const [isLoadingUrl, googleSlidesUrl, setGoogleSlidesUrl] = useGoogleSlidesUrlStoreState(250)
   const [isLoadingRefresh, refreshIntervalMinutes, setRefreshIntervalMinutes] = useRefreshIntervalMinutesStoreState(250)
   const [isLoadingDuration, slideDurationSeconds, setSlideDurationSeconds] = useSlideDurationSecondsStoreState(250)
-  const [isLoadingBackgroundType, backgroundType, setBackgroundType] = useBackgroundTypeStoreState()
-  const [isLoadingBackgroundColor, backgroundColor, setBackgroundColor] = useBackgroundColorStoreState()
-  const [isLoadingBackgroundOpacity, backgroundOpacityPercent, setBackgroundOpacityPercent] = useBackgroundOpacityPercentStoreState(5)
   const [isLoadingScale, uiScale, setUiScale] = useUiScaleStoreState(5)
 
   const isLoading =
     isLoadingUrl ||
     isLoadingRefresh ||
     isLoadingDuration ||
-    isLoadingBackgroundType ||
-    isLoadingBackgroundColor ||
-    isLoadingBackgroundOpacity ||
     isLoadingScale
   const urlValidationError = getUrlValidationError(googleSlidesUrl)
   const appliedRefreshMinutes = normalizeRefreshMinutes(refreshIntervalMinutes)
   const appliedSlideDurationSeconds = normalizeSlideDurationSeconds(slideDurationSeconds)
-  const appliedBackgroundOpacityPercent = normalizeOpacityPercent(backgroundOpacityPercent)
 
   return (
     <SettingsContainer>
@@ -115,7 +93,7 @@ export function Settings() {
             disabled={isLoading}
           />
         </SettingsInputFrame>
-        <SettingsHint>How often the presentation reloads (between 5 and 1440 minutes).</SettingsHint>
+        <SettingsHint>How often the embed reloads to pick up presentation updates (between 5 and 1440 minutes).</SettingsHint>
       </SettingsField>
 
       <SettingsHeading>Display Options</SettingsHeading>
@@ -134,55 +112,6 @@ export function Settings() {
           />
         </SettingsInputFrame>
         <SettingsHint>How long each slide stays on screen.</SettingsHint>
-      </SettingsField>
-
-      <SettingsHeading>Background</SettingsHeading>
-
-      <SettingsField>
-        <SettingsLabel>Background Type</SettingsLabel>
-        <SettingsSelectFrame>
-          <select
-            value={backgroundType}
-            onChange={(e) => setBackgroundType(e.target.value as 'default' | 'solid' | 'transparent')}
-            disabled={isLoading}
-          >
-            <option value="default">Default (black)</option>
-            <option value="solid">Solid color</option>
-            <option value="transparent">None (transparent)</option>
-          </select>
-        </SettingsSelectFrame>
-      </SettingsField>
-
-      <SettingsField>
-        <SettingsLabel>Solid Background Color</SettingsLabel>
-        <SettingsColorFrame>
-          <input
-            type="color"
-            value={sanitizeHexColor(backgroundColor)}
-            onChange={(e) => setBackgroundColor(e.target.value)}
-            onBlur={() => setBackgroundColor(sanitizeHexColor(backgroundColor))}
-            disabled={isLoading || backgroundType !== 'solid'}
-          />
-        </SettingsColorFrame>
-      </SettingsField>
-
-      <SettingsField>
-        <SettingsLabel>Background Transparency</SettingsLabel>
-        <SettingsSliderFrame>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={appliedBackgroundOpacityPercent}
-            onChange={(e) => setBackgroundOpacityPercent(e.target.value)}
-            disabled={isLoading || backgroundType === 'transparent'}
-          />
-        </SettingsSliderFrame>
-        <SettingsHint>{appliedBackgroundOpacityPercent}% opacity</SettingsHint>
-        {backgroundType === 'transparent' && (
-          <SettingsHint>Opacity is ignored when background is transparent.</SettingsHint>
-        )}
       </SettingsField>
 
       <SettingsHeading>Display Scale</SettingsHeading>
